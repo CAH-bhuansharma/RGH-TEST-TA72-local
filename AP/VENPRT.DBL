@@ -1,0 +1,195 @@
+START	;#009 VENPRT.DBL 2/25/80\1 VENDOR MASTER FILE PRINT-OUT     
+      
+;;----------------------------------------------------------     
+;;             Property of RGH Enterprises, Inc.     
+;;        RGH Enterprises, Inc. software -- AXP version 1.0     
+;;        Revision date:  01-FEB-1996     
+;;        Converted from VAX Dibol to AXP Synergy DBL v5.7.4     
+;;----------------------------------------------------------     
+      
+;     
+;     
+;	PROGRAMMER	DATE		CHANGES     
+;	E.BAAKLINI	04/05/88	EXPAND VENMAS     
+;     
+;     
+;     
+;		PROGRAM:  VENPRT.DBL     
+;     
+;		PRINTS VENDOR LIST     
+;     
+.INCLUDE	'MFD:VENMAS.MFD'     
+.include 'wnd:windows.def'	;include needed windows defs
+.include 'mfd:gwindow.mfd'	;include needed defs
+RECORD	TRMMSG     
+		,A6,'ERROR '     
+	ERA	,A3     
+		,A12,' IN ROUTINE '     
+	ERB	,A3     
+RECORD TITLE     
+		,A21,'VENDOR FILE PRINT-OUT'     
+RECORD HDR2     
+		,A3,' NO'     
+		,A3     
+		,A4,'NAME'     
+		,A22     
+		,A9,'ADDRESS-1'     
+		,A17     
+		,A9,'ADDRESS-2'     
+		,A18     
+		,A4,'CITY'     
+		,A12     
+		,A2,'ST'     
+		,A2     
+		,A3,'ZIP'     
+		,A5     
+		,A13,'PURCHASES-YTD'     
+		,A2     
+		,A4,'#VCH'     
+RECORD HDR3     
+		,A10     
+		,A9, 'LEAD TIME'     
+		,A4     
+		,A7, 'MIN ORD'     
+RECORD     
+	VENCNT	,D4     
+	STRTNO	,D5     
+	ENDNO	,D5     
+	VENKEY	,A5     
+	VENKY2	,A5     
+	TVENNO	,A5     
+	STXCTL	,D1     
+	STNFLD	,A15     
+	LINCNT	,D2,60     
+	PGCNT	,D3     
+	PLINE	,A132     
+	PRTCTL	,D3     
+	KEY   	,A4     
+	BSEND	,D5     
+	BSMID	,D5     
+	INXCTL  ,D1     
+	SRCCTL	,D1     
+	ENTRY	,A2     
+	INACTV	,A1     
+	V	,D1     
+	I	,D3     
+	CNGCTL	,D1     
+	WHATNO	,D3     
+	SWITCH	,D1,1     
+	RECNO	,D5     
+	ERN	,D3     
+	ERL	,D3     
+PROC     
+;OPEN (15,I,'TT:')     
+	xcall startup_windows	;open window for screen displays
+     	XCALL W_DISP (G_WNDID,WD_POS,1,1,WD_CLR,WDC_EOW,'VENDOR PRINT-OUT')     
+OPEN,     
+     	XCALL FILES(1,'I',11,1,2)     	;FILE # 11 -- VENMAS FILE     
+BEGIN,     
+      	LINCNT = 60     
+	PGCNT = 0     
+	STXCTL = 1     
+	VENCNT = 0     
+	XCALL STENO(STRTNO,ENDNO,'VENDOR #',5,STXCTL,1)     
+	GOTO (END), STXCTL     
+	XCALL W_DISP (G_WNDID,WD_POS,12,20,WD_CLR,WDC_EOW,'PRINT ZERO ACTIVITY VENDORS ?')     
+	XCALL INPUT (12,50,01,00,'YN',ENTRY,INXCTL,V)     
+	INACTV = ENTRY     
+	CNGCTL = 2     
+	XCALL ANYCN (CNGCTL,WHATNO)     
+	GOTO (BEGIN),CNGCTL     
+	XCALL RDYPR ('*AP:APMENU',0,0)     
+START0,     
+      
+;;----------------------------------------------------------     
+;;             Property of RGH Enterprises, Inc.     
+;;        RGH Enterprises, Inc. software -- AXP version 1.0     
+;;        Revision date:  01-FEB-1996     
+;;        Converted from VAX Dibol to AXP Synergy DBL v5.7.4     
+;;----------------------------------------------------------     
+      
+	VENKEY = STRTNO,'XXXXX'     
+	VENKY2	= ENDNO,'XXXXX'     
+ 	IF (VENKEY .EQ. '00000') GOTO NXTRD     
+READ1,  	;CHECK STARTING NUMBER IF ON FILE     
+	ONERROR GETER1     
+	READ (1,VENMAS,VENKEY)     
+	OFFERROR	     
+	GOTO CHECK     
+NXTRD,     
+	ONERROR GETER2     
+	READS (1,VENMAS,LSTREC)     
+	OFFERROR     
+CHECK,     
+	IF (VENNO .GT. ENDNO ) GOTO LSTREC     
+	IF (INACTV.EQ.'Y') GOTO PRINT1     
+	FOR I FROM 1 THRU 12     
+		IF (MTHBIL(I).NE.0) GOTO PRINT1     
+;	FOR I FROM 1 THRU 12     
+;		IF (PYRBIL(I).NE.0) GOTO PRINT1     
+	GOTO NXTRD     
+PRINT1,     
+    	PLINE(1,5) = VENNO     
+	PLINE(7,31) = VNAME     
+	PLINE(33,57) = VADD1     
+	PLINE(59,83) = VADD2     
+	PLINE(86,100) = VCITY     
+	PLINE(102,103) = VSTATE     
+	PLINE(105,113) = VZIP     
+	PLINE(114,127) = BILYTD,'ZZ,ZZZ,ZZZ.XX-'     
+	PLINE(129,132) = NOVYTD     
+	CALL PRINT     
+	PLINE(15,16) = LEADTM,'ZX'     
+	PLINE(21,30) = MINORD,'ZZZ,ZZZ.XX'     
+	CALL PRINT     
+	FORMS (14,1)     
+	INCR LINCNT     
+	INCR VENCNT     
+	GOTO NXTRD     
+PRINT,     
+	IF (LINCNT.GE.57) LINCNT = 60     
+	XCALL PRINT(LINCNT,PGCNT,PLINE,TITLE,' ',HDR2,HDR3,     
+&       'NO LEGEND',' ',' ',1,132,PRTCTL,0)     
+	IF (PGCNT.LT.0) GOTO END     
+	RETURN     
+NOFIND,     
+	XCALL MESAG('VENDOR NOT ON FILE',1)     
+	CALL CLOSEP     
+	GOTO BEGIN     
+LSTREC,     
+PRNT1,     
+	PLINE(1,5) = VENCNT, 'Z,ZZX'     
+	PLINE(7,21) = 'VENDORS ON FILE'     
+	FORMS (14,2)     
+	LINCNT = LINCNT - 1     
+	CALL PRINT     
+	FORMS (14,0)     
+	CALL CLOSEP     
+END,     
+	XCALL FILES(1,'I',11,2)     
+	STOP 'AP:VENMNT'     
+CLOSEP,     
+	XCALL RDYPR('CLOSE')     
+	RETURN     
+GETER1,     
+	OFFERROR     
+	ERB = '1'     
+	XCALL ERROR (ERN,ERL)     
+  	IF (ERN .EQ. 40) GOTO READ1   ;RECORD LOCKED     
+	IF (ERN .EQ. 53) GOTO NOFIND  ;KEY NOT SAME     
+	IF (ERN .EQ. 1) GOTO NOFIND   ;END OF FILE     
+	GOTO TRMERR     
+GETER2,     
+	OFFERROR     
+	ERB = '3'     
+	XCALL ERROR (ERN,ERL)     
+	IF (ERN .EQ. 40) GOTO NXTRD     
+	IF (ERN .EQ. 1) GOTO LSTREC    ;END OF FILE     
+	GOTO TRMERR     
+TRMERR,     
+	ERA = ERN	,'XXX'     
+	XCALL W_DISP (G_WNDID,WD_POS,12,20,WD_ATTR,ATTR_SET+ATTR_BLNK+ATTR_RVRS,TRMMSG)     
+        XCALL W_DISP (G_WNDID,WD_ATTR,ATTR_CLR+ATTR_ALL) 
+	xcall MESAG ('AN ERROR HAS OCCURED, WRITE DOWN AND CONTACT MIS',1)
+	STOP  'TSK:MSTMNU'   
+	END     

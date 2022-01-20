@@ -1,0 +1,1001 @@
+
+.main VENMNT
+START	;#005 VENMNT.DBL 2/25/80\1 VENDOR MASTER FILE MAINTENANCE
+
+	;;----------------------------------------------------------
+;;             Property of RGH Enterprises, Inc.     
+;;        RGH Enterprises, Inc. software -- AXP version 1.0     
+;;        Revision date:  01-FEB-1996     
+;;        Converted from VAX Dibol to AXP Synergy DBL v5.7.4     
+;;----------------------------------------------------------     
+;DATE:		PROJECt:   WHO:	MARK:	        DESCRIPTION: 
+;06/06/2011	etd_06072011			allow for updates to be made to the vsiteid
+;10/11/2008	etd_wo225947			changes to display data on screen
+;07/22/2008	ms_phase1			code clean up
+;03/17/2006	2006-SC-3  hhk	hhk_2006-SC-3	Location 5 changes - Expansion of VENMAS file
+;06/15/2005	wo97788		meb_wo97788     remove 'delete' ability.   
+;1/5/2005	yearend	guy	guy_yearend	allow change of which cost to use
+;09/28/2004	pur-204	   mew  mew_pur-204	Add logic and routines for FOB
+;09/10/2001	X	   SCJ	SCJ1		ADD VOLUME REBATE % FOR SALES PRICSING MODULE
+;8/01/2001		   mcl			commented out xcall dflag
+;4/17/2001		   etd	etd17   	change for the edi - default to N     
+;     
+;		PROGRAM:  VENMNT.DBL     
+;     
+;     
+;				CHANGES     
+;				-------     
+;	     
+;	PROGRAMMER		DATE		CHANGES     
+;	----------		----		------------------------------------     
+;	G.SREBERNAK		03/19/87	CHECK APHIST FILE BEFORE DELETING VENDOR     
+;						IF IN APHIST FILE CAN'T DELETE VENDOR     
+;	E.BAAKLINI		04/06/88	EXPAND VENMAS FOR FEDERAL ID#     
+;						& ADD IT TO THE SCREEN     
+;	J. LONG			06/05/89	ADD VENDOR PHONE # TO MASTER FILE     
+;	W. Koesling		05/21/98	Add Purchasing rep to Master     
+;						file.  V2.0     
+;	e dickinson		5/31/2000	same changes for edi     
+;     
+;       S LITVAK                6/26/2001	ADDED "LAST PRICE CHANGE DATE" TO SHOW WHEN
+;     						PRICE WAS CHANGED.
+;	m leitch		8/01/2001	Commented out dflag statement
+;	k geiger		9/16/2002	added ability to edit vendor comments
+;
+;
+.INCLUDE	'MFD:APHIST.MFD'
+.INCLUDE	'Mfd:VENMAS.MFD'     
+.INCLUDE	'MFD:APHKEY.MFD'     
+.INCLUDE	'MFD:CTL.MFD'     
+.INCLUDE	'MFD:TRMMSG.MFD'     
+.INCLUDE	'MFD:COMMON.MFD'     
+.INCLUDE	'MFD:GLAMAS.MFD'     
+.INCLUDE	'MFD:GLAKEY.MFD' 
+.include 	'mfd:fobcod.mfd'
+.include 'wnd:windows.def'	;include needed windows defs
+.include 'mfd:gwindow.mfd'	;include needed defs
+
+RECORD SNDMSG
+		,A10     
+	RCNT	,D5     
+	OCNT	,D5     
+		,D2,12     
+RECORD MTHARY     
+		,A9,'JANUARY  '     
+		,A9,'FEBRUARY '     
+		,A9,'MARCH    '     
+		,A9,'APRIL    '     
+		,A9,'MAY      '     
+		,A9,'JUNE     '     
+		,A9,'JULY     '     
+		,A9,'AUGUST   '     
+		,A9,'SEPTEMBER'     
+		,A9,'OCTOBER  '     
+		,A9,'NOVEMBER '     
+		,A9,'DECEMBER '     
+RECORD,X     
+		MONTH	,12A9     
+RECORD     
+	OPTION	,D2		;etd_wo225947     
+	STPNAM	,A10     
+	ENTRY	,A30     
+	INXCTL  ,D1     
+	CNGCTL	,D1     
+	WHATNO	,D2     
+	DECMAL	,D18     
+	SELECT	,D1     
+	KEY   	,A4     
+	CYCCNT	,D2     
+	BSEND	,D5     
+	BSMID	,D5     
+	APKEY	,A4     
+	BSEND2	,D5     
+	BSMID2	,D5     
+	MAXCNT	,D5     
+	SRCCTL	,D1     
+	ALPHA	,A5     
+	TVNDNO	,A5	;HOLD ORIGINAL VENKEY, USED FOR DELETION     
+			;WHEN NAME HAS CHANGED     
+	TNAME	,A25	;TEMP FIELD TO HOLD ORIGINAL NAME     
+	VENDNO	,D5     
+	SWITCH	,D1,1     
+	ERN	,D3     
+	ERL	,D3     
+	NEW	,D1     
+	DTCTL	,D1     
+	INVALD	,D1     
+	WKACNO	,D7     
+	SYSPRG	,D4     
+	ACCESS	,D1     
+	INPUPD	,A1     
+      	err_code,d3
+	cmtupd	,a1
+	HLDFOB  ,A4
+	FOBCHN	,D3	,006
+	decChangePrice	,d1
+	strhld_edi	,a1	;etd_production
+
+.PROC
+   
+	xcall startup_windows	;open window for screen displays  
+	onerror errtrap
+
+       ; xcall btchlogin('elaine_d','elaine_d','','',err_code)   ;etd2 ;hhk999
+       ; xcall setedg                                                ;hhk999
+       ; xcall set_test_data(31)                                      ;hhk999
+
+	XCALL GETCM(COMMON)
+	SYSPRG(1,2) = 10     
+	SYSPRG(3,4) = 01     
+	ACCESS =     
+	XCALL SECCK(SYSPRG,ACCESS)     
+
+	INPUPD = 'U'			;MEW_PUR-204
+	cmtupd = 'U'			;Allow changes to Vendor Comments
+	IF (ACCESS .EQ. 8) INPUPD = 'I'  
+	IF (ACCESS .EQ. 8) cmtupd = 'I'  
+       
+NOMSG,
+	IF (STPNAM .EQ. '      ') STPNAM = 'AP:APMENU'     
+	XCALL FILES (3,'I',20,SWITCH,2)		;FILE # 71 -- APHIST FILE     
+	IF (SWITCH .EQ. 9) GOTO APPROT     
+	XCALL FILES (1,INPUPD,11,SWITCH,2)               ;FILE # 11 -- VENMAS FILE     
+	IF (SWITCH.EQ.9) GOTO END1     
+	XCALL FILES (4,cmtupd,74,SWITCH,2)		;FILE # 74 -- VNDCMT  ;Allow Changes kag2   
+	IF (SWITCH.EQ.9) GOTO END2     
+	XCALL FILES (5,'I',31,11,2)		;FILE $ 31 -- GLAMAS 
+	if (switch.eq.9) goto end3		;mew_pur-204
+	xcall files (FOBCHN,cmtupd,406,switch,2)	;mew_pur-204
+BEGIN,     
+	XCALL MMENU('VENDOR MASTER FILE MAINTENANCE','VENDOR',SELECT,2)     
+	GOTO (DISPLA,DISPLA,DISPLA,LIST,LIST), SELECT     
+	xcall waitmsg(3,2)     
+ENDOFF,     
+	XCALL FILES (5,'I',31,2)        ;VNDCMT mew_pur-204
+END3, 					;mew_pur-204
+	xcall files (4,'I',74,2)	;mew_pur-204
+END2,     
+	XCALL FILES (1,INPUPD,11,2)   	;VENMAS     
+END1,     
+	XCALL FILES (3,'I',20,2)   	;APHIST     
+APPROT, 
+
+END,     
+      	STOP 'AP:APMENU'     
+LIST,     
+        OFFERROR     
+ 	CALL CLOSE3     
+	STOP 'AP:VENPRT'   ;WHEN SELECT=4     
+DISPLA,     
+	IF (ACCESS .EQ. 8) SELECT = 2       ;DISPAYS OPTIONS ON THE SCREEN
+	UNLOCK 1     
+	OFFERROR     
+	CNGCTL =     
+	VENMAS =     
+	clear decChangePrice
+	XCALL W_DISP (G_WNDID,WD_POS,1,1,WD_CLR,WDC_EOW,'VENDOR MASTER FILE MAINTENANCE')     
+	USING SELECT SELECT     
+		(1),	XCALL W_DISP (G_WNDID,WD_POS,2,1,'MODE - ADD')     
+		(2),	XCALL W_DISP (G_WNDID,WD_POS,2,1,'MODE - CHANGE')     
+		(3),	XCALL W_DISP (G_WNDID,WD_POS,2,1,'MODE - DELETE')     
+		ENDUSING     
+	XCALL W_DISP (G_WNDID,WD_POS,4,3,'1. VENDOR #')     
+	XCALL W_DISP (G_WNDID,WD_POS,5,3,'2. NAME')     
+	XCALL W_DISP (G_WNDID,WD_POS,6,3,'3. ADDRESS-1')     
+	XCALL W_DISP (G_WNDID,WD_POS,7,3,'4. ADDRESS-2')     
+	XCALL W_DISP (G_WNDID,WD_POS,8,3,'5. CITY')     
+	XCALL W_DISP (G_WNDID,WD_POS,9,3,'6. STATE')     
+	XCALL W_DISP (G_WNDID,WD_POS,10,3,'7. ZIP')     
+	XCALL W_DISP (G_WNDID,WD_POS,11,3,'8. PHONE')     
+	XCALL W_DISP (G_WNDID,WD_POS,12,3,'9. FAX:')     
+	XCALL W_DISP (G_WNDID,WD_POS,13,2,'10. LEAD TIME')     
+	XCALL W_DISP (G_WNDID,WD_POS,14,2,'11. MINIMUM ORDER')     
+	XCALL W_DISP (G_WNDID,WD_POS,15,2,'12. FREE FREIGHT')     
+	XCALL W_DISP (G_WNDID,WD_POS,16,2,'13. FEDERAL ID #')     
+	XCALL W_DISP (G_WNDID,WD_POS,17,2,'14. VENDOR CONTACT')     
+	XCALL W_DISP (G_WNDID,WD_POS,18,2,'15. ACCEPTS 820 (Y/N):')	;hhk_2006-SC-3     
+	XCALL W_DISP (G_WNDID,WD_POS,19,2,'16. SENDS 810 (Y/N):')       ;hhk_2006-SC-3
+	XCALL W_DISP (G_WNDID,WD_POS,20,2,'17. ACCEPTS EFT (Y/N):')     ;hhk_2006-SC-3
+	XCALL W_DISP (G_WNDID,WD_POS,21,2,'18. 810 VARIANCE AMT:')      ;hhk_2006-SC-3
+      
+	XCALL W_DISP (G_WNDID,WD_POS,4,46,'19. VENDOR TYPE:')     
+	XCALL W_DISP (G_WNDID,WD_POS,5,46,'20. USES BARCODING: ')     
+	XCALL W_DISP (G_WNDID,WD_POS,6,46,'21. AUTO CREATE PO: ')     
+	XCALL W_DISP (G_WNDID,WD_POS,8,46,'22. $ BILLED YTD')     
+	XCALL W_DISP (G_WNDID,WD_POS,9,46,'23. # VOUCHERS YTD')     
+	XCALL W_DISP (G_WNDID,WD_POS,11,46,'24. FOLLOW-UP A/P ')     
+	XCALL W_DISP (G_WNDID,WD_POS,12,46,'25. FOLLOW-UP PRCH')     
+	xcall W_DISP (G_WNDID,WD_POS,13,46,'26. LAST PRICE CHNG') ;SHOWS DATE GIVING 13TH CHOUSE
+	XCALL W_DISP (G_WNDID,WD_POS,14,46,'27. G/L ACCT # 1')
+	XCALL W_DISP (G_WNDID,WD_POS,15,46,'28. G/L ACCT # 2') 
+        XCALL W_DISP (G_WNDID,WD_POS,16,46,'29. G/L ACCT # 3')     
+
+
+	XCALL W_DISP (G_WNDID,WD_POS,17,46,'30. DISCOUNT %')     
+	XCALL W_DISP (G_WNDID,WD_POS,18,46,'31. PAYMENT DAYS')     
+        XCALL W_DISP (G_WNDID,WD_POS,19,46,'32. EDI ?    37. VERIFY INV ?')     
+	XCALL W_DISP (G_WNDID,WD_POS,20,46,'33. PURCHASE REP') ; wkk 2.0     
+	XCALL W_DISP (G_WNDID,WD_POS,21,46,'34. INF COST ?  35. FSS COST ?') ;     
+	XCALL W_DISP (G_WNDID,WD_POS,22,46,'36. COST TO USE FOR P.O.S:')     
+	XCALL W_DISP (G_WNDID,WD_POS,23,46,'38. VOLUME REBATE % :')     
+	IF (SELECT.NE.1) XCALL W_DISP (G_WNDID,WD_POS,4,2,'*')     
+VENDNO,     
+	NEW = 4     
+	IF (SELECT.EQ.1) NEW = 1     
+	IF (SELECT.NE.1.AND.CNGCTL) GOTO BADCNG     
+	ENTRY(1,5) = VENNO,'XXXXX'     
+	XCALL VINP2 (04,17,15,00,'AE',ENTRY,INXCTL,1,VENMAS,NEW,access)     
+	GOTO (DISPLA,BEGIN), INXCTL     
+	IF (SELECT.EQ.1) VENNO = ENTRY(1,5)     
+ 	VENDNO = VENNO     
+	TVNDNO =VENDNO,'XXXXX'	;SAVE VENKEY TO DELETE     
+	XCALL W_DISP (G_WNDID,WD_POS,4,18,'                 ')     
+	XCALL W_DISP (G_WNDID,WD_POS,4,18,TVNDNO)     
+	TNAME = VNAME
+	HLDFOB = STRVFOB				;MEW_PUR-204
+	IF (SELECT.EQ.1.AND.NEW.EQ.0) GOTO CHKADD     
+	GOTO FNDREC     
+CLOSE3,     
+	XCALL FILES(1,'U',11,2)   			;MEW_PUR-204  
+ 	XCALL FILES (3,'U',20,2)     
+	XCALL FILES (4,'U',74,2)     
+	XCALL FILES (5,'I',31,2)  
+	xcall FILES (FOBCHN,'U',406,2)			;MEW_PUR-204
+	RETURN     
+BADVEN,     
+	XCALL MESAG('VENDOR # ALREADY ON FILE',1)     
+	GOTO DISPLA     
+CHKADD,     
+	IF (SELECT .NE. 1 ) GOTO NOFIND     
+       		;WHEN SELECT 1=ADD ENTER NEW INFO DIRECTLY     
+		;CHKADD IS CALLED FROM GETER1     
+        UNLOCK 1     
+	VENMAS =     
+	VENNO = TVNDNO     
+No_Change, 
+	xcall mesag('No Changes Allowed - Change Great Plains',1)	;etd_wo98424
+	goto anycng                                                      ;etd_wo98424
+LEAD,     
+	CTL = '13,025,02,00,# ,1'     
+	CALL INPUT     
+	GOTO (DISPLA),INXCTL     
+	LEADTM = ENTRY (1,2)     
+	GOTO (ANYCNG),CNGCTL     
+  
+FRGHT,     
+	XCALL W_DISP (G_WNDID,WD_POS,15,25,'   ')     
+	CTL = '15,025,01,00,YN,1'     
+	CALL INPUT     
+	VFREFT = ENTRY     
+	USING VFREFT SELECT     
+		(' '),	XCALL W_DISP (G_WNDID,WD_POS,15,25,'NO ')     
+		('Y'),	XCALL W_DISP (G_WNDID,WD_POS,15,25,'YES')     
+		('N'),	XCALL W_DISP (G_WNDID,WD_POS,15,25,'NO ')     
+		ENDUSING     
+	GOTO (ANYCNG),CNGCTL     
+
+ACP820, 						  ;
+	CTL = '18,025,01,00,YN,1'                         ;
+	CALL INPUT                                        ;
+	strAccept820 =ENTRY(1,1)			  ;     
+	GOTO (ANYCNG),CNGCTL                              ; 
+SND810,                                                   ;
+	CTL = '19,025,01,00,YN,1'                         ;      
+	CALL INPUT                                        ;
+	strSend810 =ENTRY(1,1)				  ;	     
+	GOTO (ANYCNG),CNGCTL                              ;
+ACPEFT,                                                   ;      
+	CTL = '20,025,01,00,YN,1'                         ;      
+	CALL INPUT                                        ;
+	strAcceptEFT =ENTRY(1,1)			  ;	     
+	GOTO (ANYCNG),CNGCTL                              ;
+VAR810,                                                   ;     
+	CTL = '21,025,08,00,$-,1'			  ;	 
+	CALL INPUT                                        ;
+	decVarAmt810 =ENTRY(1,9)			  ;	     
+	GOTO (ANYCNG),CNGCTL                              ;
+;hhk_2006-SC-3 End----------------------------------------;      
+VTP,     
+	XCALL W_DISP (G_WNDID,WD_POS,23,1,WD_ATTR,ATTR_SET+ATTR_BOLD,'    C=CUSTOMER, I=INVENTORY, O=OFFICE SUPPLIES')     
+        XCALL W_DISP (G_WNDID,WD_ATTR,ATTR_CLR+ATTR_ALL)     
+	CTL = '04,067,01,00,A ,1'     
+	CALL INPUT     
+	XCALL W_DISP (G_WNDID,WD_POS,23,1,WD_CLR,WDC_EOL)     
+	GOTO (DISPLA),INXCTL     
+	VTYPE = ENTRY     
+	GOTO (ANYCNG), CNGCTL     
+BCOD,     
+	XCALL W_DISP (G_WNDID,WD_POS,06,65,'   ')     
+	CTL = '05,067,01,00,YN,1'     
+	CALL INPUT     
+	VBARCD = ENTRY     
+	USING VBARCD SELECT     
+		(' '),	XCALL W_DISP (G_WNDID,WD_POS,05,67,'NO ')     
+		('Y'),	XCALL W_DISP (G_WNDID,WD_POS,05,67,'YES')     
+		('N'),	XCALL W_DISP (G_WNDID,WD_POS,05,67,'NO ')     
+		ENDUSING     
+	GOTO (ANYCNG),CNGCTL     
+AUTOPO,     
+	XCALL W_DISP (G_WNDID,WD_POS,07,65,'   ')     
+	CTL = '06,067,01,00,YN,1'     
+	CALL INPUT     
+	VAUTPO = ENTRY     
+	USING VAUTPO SELECT     
+		(' '),	XCALL W_DISP (G_WNDID,WD_POS,06,67,'NO ')     
+		('Y'),	XCALL W_DISP (G_WNDID,WD_POS,06,67,'YES')     
+		('N'),	XCALL W_DISP (G_WNDID,WD_POS,06,67,'NO ')     
+		ENDUSING     
+	GOTO (ANYCNG),CNGCTL     
+BILLS,     
+	CTL = '08,065,10,00,$-,1'     
+	CALL INPUT     
+	GOTO (DISPLA), INXCTL     
+	BILYTD = ENTRY(1,11)     
+	GOTO (ANYCNG), CNGCTL     
+NUMBIL,     
+	CTL = '09,065,04,00,# ,1'     
+	CALL INPUT     
+	GOTO (DISPLA), INXCTL     
+	NOVYTD = ENTRY(1,4)     
+	GOTO (ANYCNG), CNGCTL     
+FOLW1,     
+	CTL = '11,065,08,00,D ,2'     
+	CALL INPUT     
+	GOTO (DISPLA), INXCTL     
+	VFLUPD(1) = ENTRY     
+	VFLWHO(1) = UINIT     
+	IF (VFLUPD(1)) XCALL W_DISP (G_WNDID,WD_POS,11,76,VFLWHO(1))     
+	GOTO (ANYCNG),CNGCTL     
+FOLW2,     
+	CTL = '12,065,08,00,D ,2'     
+	CALL INPUT     
+	GOTO (DISPLA), INXCTL     
+	VFLUPD(2) = ENTRY     
+	VFLWHO(2) = UINIT     
+	IF (VFLUPD(2)) XCALL W_DISP (G_WNDID,WD_POS,12,76,VFLWHO(2))     
+	GOTO (ANYCNG),CNGCTL
+
+VLAST_PRC,
+	CTL = '13,066,08,00,D ,2'
+	CALL INPUT
+	GOTO(DISPLA),INXCTL
+	VLAST_PRC=ENTRY
+	xcall W_DISP(G_WNDID,WD_POS,13,66,%string(VLAST_PRC,'XX/XX/XXXX'))
+	goto (ANYCNG),CNGCTL
+
+GL1,     
+	XCALL W_DISP (G_WNDID,WD_POS,14,65,WD_CLR,WDC_EOL)     
+	CTL = '14,065,04,03,#T,1'     
+	CALL INPUT     
+	GOTO (DISPLA,CLGL1,CLGL1)	,INXCTL     
+	WKACNO(1,4) = ENTRY     
+	XCALL W_DISP (G_WNDID,WD_POS,ROW,65,WD_ATTR,ATTR_SET+ATTR_BOLD,     
+&            %string(WKACNO(1,4),'XXXX'),'-')     
+        XCALL W_DISP (G_WNDID,WD_ATTR,ATTR_CLR+ATTR_ALL)     
+	CTL(4,15) = '070,03,00,# ,1'     
+	CALL INPUT     
+	GOTO (DISPLA)	,INXCTL     
+	WKACNO(5,7) = ENTRY     
+	IF (WKACNO(5,7) .EQ. 0) XCALL W_DISP (G_WNDID,WD_POS,ROW,51,WD_CLR,WDC_EOL)     
+	IF (WKACNO(5,7) .NE. 0) BEGIN     
+		XCALL W_DISP (G_WNDID,WD_POS,ROW,70,WD_ATTR,ATTR_SET+ATTR_BOLD,%string(WKACNO(5,7),'XXX'))     
+        XCALL W_DISP (G_WNDID,WD_ATTR,ATTR_CLR+ATTR_ALL)     
+		END     
+	CALL GLMAS     
+	IF (INVALD) GOTO GL1     
+	VGLAC1 = WKACNO     
+	GOTO (ANYCNG),CNGCTL     
+	GOTO GL2     
+CLGL1,     
+	VGLAC1 =     
+	XCALL W_DISP (G_WNDID,WD_POS,14,65,%string(VGLAC1,'XXXX-XXX'))     
+	GOTO (ANYCNG),CNGCTL     
+GL2,     
+	XCALL W_DISP (G_WNDID,WD_POS,15,65,WD_CLR,WDC_EOL)     
+	CTL = '15,065,04,03,#T,1'     
+	CALL INPUT     
+	GOTO (DISPLA,CLGL2,CLGL2)	,INXCTL     
+	WKACNO(1,4) = ENTRY     
+	XCALL W_DISP (G_WNDID,WD_POS,ROW,65,WD_ATTR,ATTR_SET+ATTR_BOLD,     
+&              %string(WKACNO(1,4),'XXXX'),'-')     
+        XCALL W_DISP (G_WNDID,WD_ATTR,ATTR_CLR+ATTR_ALL)     
+	CTL(4,15) = '070,03,00,# ,1'     
+	CALL INPUT     
+	GOTO (DISPLA,CLGL2)	,INXCTL     
+	WKACNO(5,7) = ENTRY     
+	IF (WKACNO(5,7) .EQ. 0) XCALL W_DISP (G_WNDID,WD_POS,ROW,51,WD_CLR,WDC_EOL)     
+	IF (WKACNO(5,7) .NE. 0) BEGIN     
+		XCALL W_DISP (G_WNDID,WD_POS,ROW,70,WD_ATTR,ATTR_SET+ATTR_BOLD,%string(WKACNO(5,7),'XXX'))     
+        XCALL W_DISP (G_WNDID,WD_ATTR,ATTR_CLR+ATTR_ALL)     
+		END     
+	CALL GLMAS     
+	IF (INVALD) GOTO GL2     
+	VGLAC2 = WKACNO     
+	GOTO (ANYCNG),CNGCTL     
+	GOTO GL3     
+CLGL2,     
+	VGLAC2 =     
+	XCALL W_DISP (G_WNDID,WD_POS,15,65,%string(VGLAC2,'XXXX-XXX'))     
+	GOTO (ANYCNG),CNGCTL     
+GL3,     
+	XCALL W_DISP (G_WNDID,WD_POS,16,65,WD_CLR,WDC_EOL)     
+	CTL = '16,065,04,03,#T,1'     
+	CALL INPUT     
+	GOTO (DISPLA,CLGL3,CLGL3)	,INXCTL     
+	WKACNO(1,4) = ENTRY     
+	XCALL W_DISP (G_WNDID,WD_POS,ROW,65,WD_ATTR,ATTR_SET+ATTR_BOLD,     
+&             %string(WKACNO(1,4),'XXXX'),'-')     
+        XCALL W_DISP (G_WNDID,WD_ATTR,ATTR_CLR+ATTR_ALL)     
+	CTL(4,15) = '070,03,00,# ,1'     
+	CALL INPUT     
+	GOTO (DISPLA)	,INXCTL     
+	WKACNO(5,7) = ENTRY     
+	IF (WKACNO(5,7) .EQ. 0) XCALL W_DISP (G_WNDID,WD_POS,ROW,51,WD_CLR,WDC_EOL)     
+	IF (WKACNO(5,7) .NE. 0) BEGIN     
+		XCALL W_DISP (G_WNDID,WD_POS,ROW,70,WD_ATTR,ATTR_SET+ATTR_BOLD,%string(WKACNO(5,7),'XXX'))     
+        XCALL W_DISP (G_WNDID,WD_ATTR,ATTR_CLR+ATTR_ALL)     
+		END     
+	CALL GLMAS     
+	IF (INVALD) GOTO GL3     
+	VGLAC3 = WKACNO     
+	GOTO ANYCNG     
+CLGL3,     
+	VGLAC3 =     
+	XCALL W_DISP (G_WNDID,WD_POS,16,65,%string(VGLAC3,'XXXX-XXX'))     
+	GOTO (ANYCNG),CNGCTL     
+TPCT,     
+	CTL = '17,065,03,00,#E,1'     
+	CALL INPUT     
+	GOTO (DISPLA,TDAYS),INXCTL     
+	VTRMP = ENTRY     
+	XCALL W_DISP (G_WNDID,WD_POS,17,65,%string(VTRMP,'ZX.X'))     
+	GOTO (ANYCNG),CNGCTL     
+TDAYS,     
+	CTL = '18,065,03,00,#E,1'     
+	CALL INPUT     
+	GOTO (DISPLA,ASKEDI),INXCTL     
+	VTRMD = ENTRY     
+	XCALL W_DISP (G_WNDID,WD_POS,18,65,%string(VTRMD,'ZZX'))     
+	GOTO (ANYCNG),CNGCTL     
+ASKEDI,     
+
+	strhld_edi = venedi	;etd_production_06232005
+	CTL = '19,056,01,00,YN,1'   ;etd17     
+	CALL INPUT     
+	VENEDI = ENTRY     
+	INXCTL =     
+
+	XCALL W_DISP (G_WNDID,WD_POS,19,56,VENEDI)     
+	GOTO (ANYCNG),CNGCTL
+  
+ASKEDI_invoices,     
+        
+	CTL = '19,076,01,00,YN,1'     
+	CALL INPUT
+	VEDIinv_verify = ENTRY
+	INXCTL =
+	XCALL W_DISP (G_WNDID,WD_POS,19,76,VEDIinv_verify)
+	GOTO (ANYCNG),CNGCTL
+      
+PURREP,     
+	CTL = '20,065,03,00,A ,1'     
+	CALL INPUT     
+	GOTO (DISPLA),INXCTL     
+	PURREP = ENTRY     
+	XCALL W_DISP (G_WNDID,WD_POS,20,65, PURREP)     
+	GOTO ANYCNG     
+     
+INFFLG,     
+	IF (USRCTL.NE.'MIS') GOTO ANYCNG     
+	CTL = '21,059,01,00,YN,1'     
+	CALL INPUT     
+	VINFFLG = ENTRY     
+	INXCTL =     
+	XCALL W_DISP (G_WNDID,WD_POS,21,59,VINFFLG)     
+	GOTO ANYCNG     
+      
+FSSFLG,     
+	IF (USRCTL.NE.'MIS') GOTO ANYCNG     
+	CTL = '21,075,01,00,YN,1'     
+	CALL INPUT     
+	VFSSFLG = ENTRY     
+	INXCTL =     
+	XCALL W_DISP (G_WNDID,WD_POS,21,75,VFSSFLG)     
+	GOTO ANYCNG     
+WCHCST,     
+	IF (USRCTL.NE.'MIS') GOTO ANYCNG     
+	decChangePrice = 1
+	XCALL W_DISP (G_WNDID,WD_POS,24,1,'1=ACTUAL, 2=PRIOR YR, 3=2 YRS BACK, 4=SPECIAL')     
+	CTL = '22,075,01,01,# ,1'     
+	CALL INPUT     
+	VCSTFL = ENTRY     
+	IF (VCSTFL.LT.0.OR.VCSTFL.GT.4) VCSTFL = 1     
+	XCALL W_DISP (G_WNDID,WD_POS,22,75,%STRING(VCSTFL,'X'))     
+	XCALL W_DISP (G_WNDID,WD_POS,24,1,WD_CLR,WDC_EOL)     
+	GOTO ANYCNG     
+
+
+GLMAS,     
+	GLOC = 01     
+	GACT = WKACNO     
+	INVALD =     
+RDGLA,     
+	READ (5,GLAMAS,GLAKEY) [1=badgl,40=glmas,53=badgl]     
+	IF (FSTCDE(6,7).NE.'VP' .AND. FSTCDE(6,7).NE.'VS' .AND.     
+&	    FSTCDE(6,7).NE.'NT') INVALD = 1     
+	IF (INVALD) XCALL MESAG ('YOU HAVE ENTERED AN INVALID G/L POSTING ACCOUNT',1)     
+	RETURN     
+BADGL,     
+	INVALD = 1     
+	IF (INVALD) XCALL MESAG ('YOU HAVE ENTERED AN INVALID G/L POSTING ACCOUNT',1)     
+	RETURN     
+PROCES,     
+	xcall waitmsg(3,2)     
+	GOTO (ADD,CHANGE), SELECT     
+FNDREC,     
+	IF (SELECT .EQ.1 )GOTO BADVEN     
+LOKERR,     
+	XCALL W_DISP (G_WNDID,WD_POS,24,1,WD_CLR,WDC_EOL,' ')     
+	XCALL W_DISP (G_WNDID,WD_POS,5,17,VNAME)     
+	XCALL W_DISP (G_WNDID,WD_POS,6,17,VADD1)     
+	XCALL W_DISP (G_WNDID,WD_POS,7,17,VADD2)     
+	XCALL W_DISP (G_WNDID,WD_POS,8,17,VCITY)     
+	XCALL W_DISP (G_WNDID,WD_POS,9,17,VSTATE)     
+	XCALL W_DISP (G_WNDID,WD_POS,10,17,VZIP)     
+	XCALL W_DISP (G_WNDID,WD_POS,11,17,%string(VPHONE,'(XXX) XXX-XXXX'))     
+	XCALL W_DISP (G_WNDID,WD_POS,12,17,%string(VFAX,'(XXX) XXX-XXXX'))     
+	XCALL W_DISP (G_WNDID,WD_POS,13,25,%string(LEADTM,'ZX'))     
+	XCALL W_DISP (G_WNDID,WD_POS,14,25,%string(MINORD,'ZZZ,ZZX.XX'))     
+        USING VFREFT SELECT
+		(' '),	XCALL W_DISP (G_WNDID,WD_POS,15,25,'NO ')     
+		('Y'),	XCALL W_DISP (G_WNDID,WD_POS,15,25,'YES')     
+		('N'),	XCALL W_DISP (G_WNDID,WD_POS,15,25,'NO ')     
+		ENDUSING     
+	XCALL W_DISP (G_WNDID,WD_POS,16,25,VNDFID)     
+	XCALL W_DISP (G_WNDID,WD_POS,17,25,VCONTC)     
+	XCALL W_DISP (G_WNDID,WD_POS,18,25,strAccept820)                        ;hhk_2006-SC-3
+	XCALL W_DISP (G_WNDID,WD_POS,19,25,strSend810)                          ;hhk_2006-SC-3
+	XCALL W_DISP (G_WNDID,WD_POS,20,25,strAcceptEFT)                        ;hhk_2006-SC-3
+	XCALL W_DISP (G_WNDID,WD_POS,21,25,%string(decVarAmt810,'ZZZ,ZZX.XX-')) ;hhk_2006-SC-3  
+	XCALL W_DISP (G_WNDID,WD_POS,4,67,VTYPE)     
+DSPYTD,     
+	USING VBARCD SELECT     
+		(' '),	XCALL W_DISP (G_WNDID,WD_POS,05,67,'NO ')     
+		('Y'),	XCALL W_DISP (G_WNDID,WD_POS,05,67,'YES')     
+		('N'),	XCALL W_DISP (G_WNDID,WD_POS,05,67,'NO ')     
+		ENDUSING     
+	USING VAUTPO SELECT     
+		(' '),	XCALL W_DISP (G_WNDID,WD_POS,06,67,'NO ')     
+		('Y'),	XCALL W_DISP (G_WNDID,WD_POS,06,67,'YES')     
+		('N'),	XCALL W_DISP (G_WNDID,WD_POS,06,67,'NO ')     
+		ENDUSING     
+	XCALL W_DISP (G_WNDID,WD_POS,08,65,%string(BILYTD,'ZZ,ZZZ,ZZX.XX'))     
+	XCALL W_DISP (G_WNDID,WD_POS,09,74,%string(NOVYTD,'ZZZX'))     
+	XCALL W_DISP (G_WNDID,WD_POS,11,65,%string(VFLUPD(1),'XX/XX/XXXX'))     
+	IF (VFLUPD(1)) XCALL W_DISP (G_WNDID,WD_POS,11,76,VFLWHO)     
+	XCALL W_DISP (G_WNDID,WD_POS,12,65,%string(VFLUPD(2),'XX/XX/XXXX'))     
+	IF (VFLUPD(2)) XCALL W_DISP (G_WNDID,WD_POS,12,76,VFLWHO(2))     
+	xcall W_DISP (G_WNDID,WD_POS,13,66,%STRING(VLAST_PRC,'XX/XX/XXXX'))
+	XCALL W_DISP (G_WNDID,WD_POS,14,65,%string(VGLAC1,'XXXX-XXX'))
+	XCALL W_DISP (G_WNDID,WD_POS,15,65,%string(VGLAC2,'XXXX-XXX'))     
+	XCALL W_DISP (G_WNDID,WD_POS,16,65,%string(VGLAC3,'XXXX-XXX'))     
+	XCALL W_DISP (G_WNDID,WD_POS,17,65,%string(VTRMP,'ZX.X'))     
+	XCALL W_DISP (G_WNDID,WD_POS,18,65,%string(VTRMD,'ZZX'))     
+	USING VENEDI SELECT     
+		(' '), XCALL W_DISP (G_WNDID,WD_POS,19,56,'N')     
+		('N'), XCALL W_DISP (G_WNDID,WD_POS,19,56,'N')     
+		('Y'), XCALL W_DISP (G_WNDID,WD_POS,19,56,'Y')     
+		ENDUSING     
+	USING VEDIINV_Verify SELECT     
+                  (' '), XCALL W_DISP (G_WNDID,WD_POS,19,76,'N')     
+                   ('N'), XCALL W_DISP (G_WNDID,WD_POS,19,76,'N')     
+                    ('Y'), XCALL W_DISP (G_WNDID,WD_POS,19,76,'Y')     
+                   ENDUSING     
+	XCALL W_DISP (G_WNDID,WD_POS,20,65, PURREP) ; wkk 2.0     
+	XCALL W_DISP (G_WNDID,WD_POS,21,59, VINFFLG) ;     
+	XCALL W_DISP (G_WNDID,WD_POS,21,75, VFSSFLG) ;     
+	USING VCSTFL SELECT     
+		(0),	XCALL W_DISP (G_WNDID,WD_POS,22,75,'1')     
+		(1),	XCALL W_DISP (G_WNDID,WD_POS,22,75,'1')     
+		(2),	XCALL W_DISP (G_WNDID,WD_POS,22,75,'2')     
+		(3),	XCALL W_DISP (G_WNDID,WD_POS,22,75,'3')     
+		(4),	XCALL W_DISP (G_WNDID,WD_POS,22,75,'4')     
+		ENDUSING     
+
+	IF (SELECT.NE.3) GOTO ANYCNG     
+	XCALL W_DISP (G_WNDID,WD_POS,24,1,WD_ATTR,ATTR_SET+ATTR_BOLD+ATTR_RVRS,WD_CLR,WDC_EOL,'RIGHT VENDOR ? ')     
+        XCALL W_DISP (G_WNDID,WD_ATTR,ATTR_CLR+ATTR_ALL)     
+	CTL = '24,017,01,01,YN,1'     
+	CALL INPUT     
+	xcall waitmsg(3,1)     
+	GOTO (DELETE,DISPLA),INXCTL     
+      
+CNGBR,        ;IF WHATNO=1 (CHANGE THE VENDOR NUMBER) START ALL OVER     
+	IF (ACCESS .EQ. 7) BEGIN     
+		XCALL MESAG (' ',1)     
+		GOTO DISPLA     
+		END     
+
+	GOTO (DISPLA,no_change,no_change,no_change,no_change,no_change,no_change,no_change,no_change,LEAD,        ;hhk_2006-SC-3
+&             no_change,FRGHT,no_change,No_change,ACP820,SND810,ACPEFT,VAR810,VTP,BCOD,AUTOPO, ;hhk_2006-SC-3    
+&	      BILLS,NUMBIL,FOLW1,FOLW2,VLAST_PRC,GL1,GL2,GL3,no_change,no_change,ASKEDI, ;hhk_2006-SC-3    
+&	      PURREP,INFFLG,FSSFLG,WCHCST,askedi_invoices),WHATNO               ;hhk_2006-SC-3
+     
+BADCNG,     
+	CNGCTL = 3     
+	GOTO ANYCNG     
+ADD,     
+RDERR3,     
+        STORE (1,VENMAS)    [40=sleep1,54=badven] 
+FREBUF,     
+    	GOTO DISPLA     
+CHANGE,     
+	IF (TNAME .EQ. VNAME ) GOTO WRT2	;IF A NAME HAS CHANGED THE     
+					;WHOLE RECORD HAS TO BE DELETED     
+					;THEN A STORE IS ISSUED     
+	DELETE(1,TVNDNO)		;NOTE,DELETE WITH ORIGINAL KEY     
+	STORE(1,VENMAS)  		;NOTE,STORE WITH NEW VENKEY     
+	GOTO DISPLA     
+WRT2,     
+
+        WRITE (1,VENMAS)	;CHANGE ONLY 
+
+        GOTO FREBUF     
+DELETE,  
+	xcall mesag('ACCESS DENIED - CANNOT DELETE VENDORS!',1)   ;meb_wo97788
+	goto frebuf   ;meb_wo97788
+		;CHECK HISTORY FILE BEFORE DELETING     
+	HVEND = VENDNO     
+READ2,     
+	READ (3,APHIST,APHKY2(1,5),KEYNUM:1)    [1=okdel,40=read2,53=check_vendor]
+	if (0)
+	  begin
+check_vendor,
+	    if (vennum .ne. vendno) goto okdel
+	    goto fndhst
+	    end
+FNDHST,     
+   	XCALL MESAG('VENDOR ON FILE IN APHIST CAN NOT DELETE',2)     
+        GOTO FREBUF     
+OKDEL,     
+        DELETE (1,VENDNO)   [40=okdel]  
+	GOTO FREBUF     
+NOFIND,     
+	XCALL MESAG('VENDOR NOT FOUND',1)     
+	GOTO DISPLA     
+INPUT,     
+	XCALL INPUT(ROW,COL,MAX,MIN,TYP,ENTRY,INXCTL,V)     
+	RETURN     
+SLEEP1,     
+	SLEEP 2     
+	GOTO RDERR3     
+ANYCNG,     
+	XCALL W_DISP (G_WNDID,WD_POS,23,1,'HIT <TAB> FOR ADDITIONAL INFORMATION') 
+
+	IF (ACCESS .EQ. 8) BEGIN
+		XCALL MESAG (' ',1)     
+		GOTO DISPLA     
+		END     
+	CNGCTL = 7     
+	XCALL ANYCN(CNGCTL,WHATNO)     
+	GOTO (PROCES,CNGBR,DISPLA,OPTION), CNGCTL+1 
+
+
+OPTION,
+	XCALL W_DISP (G_WNDID,WD_POS,3,1,WD_CLR,WDC_EOW) 
+	XCALL W_DISP (G_WNDID,WD_POS,4,3,' VENDOR #') 		;MEW_PUR-204 
+	XCALL W_DISP (G_WNDID,WD_POS,4,16,TVNDNO)		;MEW_PUR-204     
+	XCALL W_DISP (G_WNDID,WD_POS,5,3,' NAME')     		;MEW_PUR-204
+	XCALL W_DISP (G_WNDID,WD_POS,5,15,VNAME)     	        ;MEW_PUR-204
+	xcall w_disp (g_wndid,wd_pos,6,3,'10. Safe Vendor:')	;etd_wo225947
+	using vsafevnd select
+(0),        XCALL W_DISP (G_WNDID,WD_POS,06,25,'NO',wd_updt)
+(),         xcall w_disp (g_wndid,wd_pos,06,25,'Yes',wd_updt)
+	endusing
+
+	xcall w_disp (g_wndid,wd_pos,6,45,'11. Min Case Qty:')	;etd_wo225947
+	xcall w_disp (g_wndid,wd_pos,6,65,%string(vmin_cases,'ZZZX'),wd_updt)
+	xcall w_disp (g_wndid,wd_pos,7,3,'12. EDI855IN?')	;etd_wo225947
+        xcall w_disp (g_wndid,wd_pos,07,25,strin855,wd_updt)
+
+	xcall w_disp (g_wndid,wd_pos,7,45,'13. MDC Vendor')	;etd_wo225947
+	
+	using strmdcvendor select
+(1),         xcall w_disp (g_wndid,wd_pos,07,65,'Yes',wd_updt)
+	     (),        XCALL W_DISP (G_WNDID,WD_POS,07,65,'NO',wd_updt)
+
+	endusing
+
+
+
+
+	XCALL W_DISP (G_WNDID,WD_POS,9,10,'PLEASE SELECT OPTION:')     
+	XCALL W_DISP (G_WNDID,WD_POS,10,15,'1. COMMENTS')     
+	XCALL W_DISP (G_WNDID,WD_POS,11,15,'2. YTD HISTORY')     
+	XCALL W_DISP (G_WNDID,WD_POS,12,15,'3. PRINT OUT INFO') 
+	xcall W_DISP (G_WNDID,WD_POS,13,15,'4. FOB CODE MAINTENANCE')
+	xcall W_DISP (G_WNDID,WD_POS,14,15,'5. VENDOR ACCOUNT# MAINT')  ;hhk_2006-SC-3
+
+
+	
+	CTL = '09,032,02,01,NE,1'     
+	CALL INPUT     
+	GOTO (PROCES,PROCES),INXCTL     
+	OPTION = ENTRY     
+	GOTO (CMNT,YTD,PRTIT,FOB_MNT,ACCT_MNT,option,option,option,option,SafeVendor,MinCase,EDI855,MDCVENDOR),OPTION 	     ;etd_wo225947    
+	GOTO OPTION     
+CMNT,     
+	XCALL VNDCMT ('VENDOR MASTER FILE MAINTENANCE',VENNO,VNAME,4,0,18)     
+	XCALL W_DISP (G_WNDID,WD_POS,1,1,WD_CLR,WDC_EOW,'VENDOR MASTER FILE MAINTENANCE')     
+	USING SELECT SELECT     
+		(1),	XCALL W_DISP (G_WNDID,WD_POS,2,1,'MODE - ADD')     
+		(2),	XCALL W_DISP (G_WNDID,WD_POS,2,1,'MODE - CHANGE')     
+		(3),	XCALL W_DISP (G_WNDID,WD_POS,2,1,'MODE - DELETE')     
+		ENDUSING     
+	GOTO OPTION     
+YTD,     
+	XCALL W_DISP (G_WNDID,WD_POS,9,1,WD_CLR,WDC_EOW,'                      *** YEAR-TO-DATE ***    *** PRIOR YEAR ***')     
+	CYCCNT =     
+YTDCYC,     
+	INCR CYCCNT     
+	IF (CYCCNT.GT.12) GOTO ENDYTD     
+	XCALL W_DISP (G_WNDID,WD_POS,CYCCNT+10,5,MONTH(CYCCNT))     
+	XCALL W_DISP (G_WNDID,WD_POS,CYCCNT+10,29,     
+&               %string(MTHBIL(CYCCNT),'ZZ,ZZZ,ZZX.XX-'))     
+	XCALL W_DISP (G_WNDID,WD_POS,CYCCNT+10,51,     
+&               %string(PYRBIL(CYCCNT),'ZZ,ZZZ,ZZX.XX-'))     
+	GOTO YTDCYC     
+ENDYTD,     
+	XCALL MESAG (' ',1)     
+	GOTO OPTION     
+PRTIT,     
+	XCALL MESAG ('NOT YET AVAILABLE',1)     
+	GOTO OPTION 
+
+; start mewa_pur-204
+
+FOB_MNT,
+	XCALL W_DISP (G_WNDID,WD_POS,1,1,WD_CLR,WDC_EOW,'VENDOR MASTER FILE MAINTENANCE')     
+        USING SELECT SELECT     
+	    (1), XCALL W_DISP (G_WNDID,WD_POS,2,1,'MODE - ADD')     
+	    (2), XCALL W_DISP (G_WNDID,WD_POS,2,1,'MODE - CHANGE')     
+	    (3), XCALL W_DISP (G_WNDID,WD_POS,2,1,'MODE - DELETE')     
+	ENDUSING 
+
+	xcall w_disp (g_wndid,wd_pos,10,1,' 1. SHIPMENT METHOD OF PAYMENT: ')
+	xcall W_DISP (G_WNDID,WD_POS,12,1,' 2. LOCATION QUALIFIER:') 
+	xcall W_DISP (G_WNDID,WD_POS,15,20,'FOB POINT: ')   
+
+	xcall W_DISP (G_WNDID,WD_POS,10,33,STRVFOB(1,2))
+	xcall W_DISP (G_WNDID,WD_POS,12,33,STRVFOB(3,4))
+	xcall W_DISP (G_WNDID,WD_POS,15,31,STRVFOB)
+
+	FOBCOD = 
+	if (STRVFOB(1,2) .NE. '  ') BEGIN
+	    FOB_KEY =
+	    FOBK_TYPE = 'SM'
+	    FOBK_CODE = STRVFOB(1,2)
+	    READ(6,FOBCOD,FOB_KEY)  	[1=NOSHPM,53=NOSHPM]
+	    goto disp_sm
+	end
+
+NOSHPM,
+	FOB_DESC = 'NO SHIP METHOD FOUND'
+
+DISP_SM,
+	xcall W_DISP (G_WNDID,WD_POS,10,44,FOB_DESC)
+	
+
+GETLOC,
+	FOBCOD =
+	if (STRVFOB(3,4) .NE. '  ') BEGIN
+	    FOB_KEY =
+	    FOBK_TYPE = 'LQ'
+	    FOBK_CODE = STRVFOB(3,4)
+	    READ(6,FOBCOD,FOB_KEY)  	[1=NOLQ,53=NOLQ]
+	    goto disp_LQ
+	end
+
+NOLQ,
+	FOB_DESC = 'NO LOCATION QUALIFIER FOUND'
+
+DISP_LQ,
+	xcall W_DISP (G_WNDID,WD_POS,12,44,FOB_DESC)
+        GOTO FANYCN
+
+SHIPM,
+	xcall W_DISP (G_WNDID,WD_POS,10,33,'                                     ')
+	CTL = '10,033,10,01,AE,1'
+	unlock FOBCHN
+	xcall FOBINP (ROW,COL,MAX,MIN,TYP,ENTRY,INXCTL,FOBCHN,
+	&	      FOBCOD,ACCESS,'SM')
+	unlock FOBCHN
+	if (INXCTL) goto SHIPM
+	STRVFOB(1,2) = ENTRY
+	xcall W_DISP (G_WNDID,WD_POS,10,33,WD_ATTR,ATTR_SET+ATTR_BOLD,STRVFOB(1,2))
+	xcall W_DISP (G_WNDID,WD_POS,10,44,WD_ATTR,ATTR_SET+ATTR_BOLD,FOB_DESC)
+	xcall W_DISP (G_WNDID,WD_POS,15,31,STRVFOB)
+	xcall W_DISP (G_WNDID,WD_ATTR,ATTR_CLR+ATTR_ALL)
+	GOTO FANYCN
+LOCQ,
+   	xcall W_DISP (G_WNDID,WD_POS,12,33,'                                      ')
+	CTL = '12,033,10,01,AE,1'
+	unlock FOBCHN
+	xcall FOBINP (ROW,COL,MAX,MIN,TYP,ENTRY,INXCTL,FOBCHN,
+	&	      FOBCOD,ACCESS,'LQ')
+	unlock FOBCHN
+	if (INXCTL) goto LOCQ
+	STRVFOB(3,4) = ENTRY
+	xcall W_DISP (G_WNDID,WD_POS,12,33,WD_ATTR,ATTR_SET+ATTR_BOLD,STRVFOB(3,4))
+        xcall W_DISP (G_WNDID,WD_POS,12,44,WD_ATTR,ATTR_SET+ATTR_BOLD,FOB_DESC)
+        xcall W_DISP (G_WNDID,WD_POS,15,31,STRVFOB)
+	xcall W_DISP (G_WNDID,WD_ATTR,ATTR_CLR+ATTR_ALL)
+	GOTO FANYCN
+
+FANYCN,
+	CNGCTL = 5
+	XCALL ANYCN(CNGCTL,WHATNO)  
+	IF (CNGCTL .EQ. 0) GOTO OPTION     
+	GOTO (SHIPM,LOCQ), WHATNO
+	goto FANYCN
+
+ACCT_MNT,
+	XCALL W_DISP (G_WNDID,WD_POS,1,1,WD_CLR,WDC_EOW,'VENDOR MASTER FILE MAINTENANCE')     
+        USING SELECT SELECT     
+	    (1), XCALL W_DISP (G_WNDID,WD_POS,2,1,'MODE - ADD')     
+	    (2), XCALL W_DISP (G_WNDID,WD_POS,2,1,'MODE - CHANGE')     
+	    (3), XCALL W_DISP (G_WNDID,WD_POS,2,1,'MODE - DELETE')     
+	ENDUSING 
+
+	XCALL W_DISP (G_WNDID,WD_POS,5,5,' 1. VENDOR ACCOUNT # 1: ') 
+	XCALL W_DISP (G_WNDID,WD_POS,6,5,' 2. VENDOR ACCOUNT # 2: ') 
+	XCALL W_DISP (G_WNDID,WD_POS,7,5,' 3. VENDOR ACCOUNT # 3: ') 
+	XCALL W_DISP (G_WNDID,WD_POS,8,5,' 4. VENDOR ACCOUNT # 4: ') 
+	XCALL W_DISP (G_WNDID,WD_POS,9,5,' 5. VENDOR ACCOUNT # 5: ') 
+	XCALL W_DISP (G_WNDID,WD_POS,10,5,' 6. VENDOR ACCOUNT # 6: ') 
+	XCALL W_DISP (G_WNDID,WD_POS,11,5,' 7. VENDOR ACCOUNT # 7: ') 
+	XCALL W_DISP (G_WNDID,WD_POS,12,5,' 8. VENDOR ACCOUNT # 8: ') 
+	XCALL W_DISP (G_WNDID,WD_POS,13,5,' 9. VENDOR ACCOUNT # 9: ') 
+
+	; etd 06072011 add the siteid for MIS to update
+	xcall w_disp (g_wndid,wd_pos,20,5,'10. Oracle Supplier and site id:')
+
+ 
+
+        xcall W_DISP (G_WNDID,WD_POS,5,30,VACTNO)
+	xcall W_DISP (G_WNDID,WD_POS,6,30,VACT2)
+        xcall W_DISP (G_WNDID,WD_POS,7,30,VACT3)
+        xcall W_DISP (G_WNDID,WD_POS,8,30,VACT4)
+        xcall W_DISP (G_WNDID,WD_POS,9,30,VACT5)
+        xcall W_DISP (G_WNDID,WD_POS,10,30,VACT6)
+        xcall W_DISP (G_WNDID,WD_POS,11,30,VACT7)
+        xcall W_DISP (G_WNDID,WD_POS,12,30,VACT8)
+        xcall W_DISP (G_WNDID,WD_POS,13,30,VACT9)
+	xcall w_disp (g_wndid,wd_pos,20,50,vsiteid)
+	goto acctanycn
+ACT1,
+	CTL = '05,030,25,00,A ,1'
+	call input
+	VACTNO = ENTRY(1,25)
+	xcall W_DISP (G_WNDID,WD_POS,5,30,WD_ATTR,ATTR_SET+ATTR_BOLD,VACTNO)
+	GOTO ACCTANYCN
+ACT2,
+	CTL = '06,030,25,00,A ,1'
+	call input
+	vact2 = entry(1,25)
+	xcall W_DISP (G_WNDID,WD_POS,6,30,WD_ATTR,ATTR_SET+ATTR_BOLD,VACT2)
+	GOTO ACCTANYCN
+ACT3,
+	CTL = '07,030,25,00,A ,1'
+	call input
+	vact3 = entry(1,25)
+	xcall W_DISP (G_WNDID,WD_POS,7,30,WD_ATTR,ATTR_SET+ATTR_BOLD,VACT3)
+	GOTO ACCTANYCN
+ACT4,
+	CTL = '08,030,25,00,A ,1'
+	call input
+	vact4 = entry(1,25)
+	xcall W_DISP (G_WNDID,WD_POS,8,30,WD_ATTR,ATTR_SET+ATTR_BOLD,VACT4)
+	GOTO ACCTANYCN
+ACT5,
+	CTL = '09,030,25,00,A ,1'
+	call input
+	vact5 = entry(1,25)
+	xcall W_DISP (G_WNDID,WD_POS,9,30,WD_ATTR,ATTR_SET+ATTR_BOLD,VACT5)
+	GOTO ACCTANYCN
+ACT6,
+	CTL = '10,030,25,00,A ,1'
+	call input
+	vact6 = entry(1,25)
+	xcall W_DISP (G_WNDID,WD_POS,10,30,WD_ATTR,ATTR_SET+ATTR_BOLD,VACT6)
+	GOTO ACCTANYCN
+ACT7,
+	CTL = '11,030,25,00,A ,1'
+	call input
+	vact7 = entry(1,25)
+	xcall W_DISP (G_WNDID,WD_POS,11,30,WD_ATTR,ATTR_SET+ATTR_BOLD,VACT7)
+	GOTO ACCTANYCN
+ACT8,
+	CTL = '12,030,25,00,A ,1'
+	call input
+	vact8 = entry(1,25)
+	xcall W_DISP (G_WNDID,WD_POS,12,30,WD_ATTR,ATTR_SET+ATTR_BOLD,VACT8)
+	GOTO ACCTANYCN
+ACT9,
+	CTL = '13,030,25,00,A ,1'
+	call input
+	vact9 = entry(1,25)
+	xcall W_DISP (G_WNDID,WD_POS,13,30,WD_ATTR,ATTR_SET+ATTR_BOLD,VACT9)
+	GOTO ACCTANYCN
+	;etd 06072011 - allow for updates to be made to the vsiteid
+vsiteid,
+	IF (USRCTL.NE.'MIS') 
+	  begin
+	    xcall mesag('Only MIS allowed to update this field',1)
+	    GOTO ACCTANYCN
+	    end
+	CTL = '20,050,15,00,A ,1'
+	call input
+	vsiteid = entry(1,15)
+	xcall W_DISP (G_WNDID,WD_POS,20,50,WD_ATTR,ATTR_SET+ATTR_BOLD,vsiteid)
+	GOTO ACCTANYCN
+
+ACCTANYCN,
+	CNGCTL = 7
+	XCALL ANYCN(CNGCTL,WHATNO)  
+	IF (CNGCTL .EQ. 0) GOTO OPTION     
+	GOTO (act1,act2,act3,act4,act5,act6,act7,act8,act9,vsiteid), WHATNO    ;etd_06072011 allow for updates to be made to the vsiteid
+	goto acctANYCN
+
+;etd_wo225947
+SafeVendor,
+	ctl = '06,025,01,00,A ,1'
+ 	CALL INPUT 
+	if (entry .eq. 'Y') then
+	  vsafevnd =     1
+	else
+	  vsafevnd = 0
+	using vsafevnd select
+(0),        XCALL W_DISP (G_WNDID,WD_POS,06,25,'NO',wd_updt)
+(),         xcall w_disp (g_wndid,wd_pos,06,25,'Yes',wd_updt)
+	endusing
+	goto option
+
+MinCase,
+
+	ctl = '06,065,04,00,#E,1'
+	CALL INPUT     
+	vmin_cases = ENTRY  
+
+	xcall w_disp (g_wndid,wd_pos,6,65,%string(vmin_cases,'ZZZX'),wd_updt)
+	goto option
+
+EDI855,
+	ctl = '07,025,01,00,A ,1'
+	call input
+	strin855 = entry
+	if (strin855 .nes. 'Y')
+	  strin855 = 'N'
+        xcall w_disp (g_wndid,wd_pos,07,25,strin855,wd_updt)
+	goto option
+
+MDCVENDOR,
+
+	ctl = '07,065,01,00,A ,1'
+	CALL INPUT  
+	if (entry .eq. 'Y') then
+	  strmdcvendor  = 1
+	else 
+	  strmdcvendor = 0
+
+	using strmdcvendor select
+
+(1),         xcall w_disp (g_wndid,wd_pos,07,65,'Yes',wd_updt)
+(),        XCALL W_DISP (G_WNDID,WD_POS,07,65,'NO',wd_updt)
+	endusing
+	goto option
+
+    
+errtrap,
+	xcall errtrap
+.END     
