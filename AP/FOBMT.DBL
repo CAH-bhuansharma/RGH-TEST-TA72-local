@@ -1,0 +1,205 @@
+.MAIN FOBPMT
+START	;FOBPMT.DBL => FOB FILE MAINTENANCE
+;;----------------------------------------------------------     
+;;             Property of RGH Enterprises, Inc.     
+;;        RGH Enterprises, Inc. software -- AXP version 1.0     
+;;        Revision date:  01-FEB-1996     
+;;        Converted from VAX Dibol to AXP Synergy DBL v5.7.4     
+;;----------------------------------------------------------     
+;  date		project		who	mark	desc
+;------------------------------------------------------------------------------------------------------
+;09/23/2004	pur-204		mew mew_pur-204	create new program
+;
+
+.INCLUDE	'MFD:FOBCOD.MFD'
+.include 	'MFD:ctl.MFD'
+
+.include 'wnd:windows.def'	;include needed windows defs
+.include 'mfd:gwindow.mfd'	;include needed defs
+
+record title   
+	        ,a10
+		,a40    ,'FOB CODES LISTING'
+
+RECORD HDR1     
+		,A4	,'TYPE'     	    ;lim1
+		,A2     
+              	,A4	,'CODE'
+		,a2
+                ,a30	,'DESCRIPTION'
+		,a2
+     		,a40	,'COMMENTS'
+
+
+RECORD HDR2     
+		,A51     
+		     
+     
+RECORD     
+	decADD		,D1 
+	decCNGCTL	,D1 
+        strENTRY	,A80     
+	decINXCTL	,D1     
+	decKEYCNG	,D1     
+	decSWITCH	,D1     
+	decWHATNO	,D2    
+	strhld_FOBCOD	,a256
+	strPLINE	,A132     
+	decLINCNT	,D3	,060     
+	decPGCNT	,D5     
+	decerr_code 	,d1
+.PROC     
+;OPEN (15,O,'TT:')     
+	xcall startup_windows	;open window for screen displays
+	onerror errtrap
+
+;	xcall btchlogin('mark','mark_w','','',decerr_code)   ;etd2
+; 	xcall setedg
+;        xcall set_test_data(1)
+
+	XCALL W_DISP (G_WNDID,WD_POS,1,1,WD_CLR,WDC_EOW,     
+&	            'FOB CODE FILE MAINTENANCE')
+
+	XCALL FILES (1,'U',406,11,2)		
+       
+	IF (decSWITCH .EQ. 9) STOP 'AP:APMENU'
+START,     
+	XCALL W_DISP (G_WNDID,WD_POS,2,1,WD_CLR,WDC_EOW) 
+	XCALL W_DISP (G_WNDID,WD_POS,08,10,'1. TYPE:')     
+	XCALL W_DISP (G_WNDID,WD_POS,10,10,'2. CODE:')  
+	xcall W_DISP (G_WNDID,WD_POS,12,10,'3. DESCRIPTION:')
+	XCALL W_DISP (G_WNDID,WD_POS,14,10,'4. COMMENTS:')    
+	XCALL W_DISP (G_WNDID,WD_POS,16,15,'VALID TYPES:')
+	xcall w_disp (g_wndid,wd_pos,17,20,'SM = SHIPMENT METHOD OF PAYMENT')
+	xcall W_DISP (G_WNDID,WD_POS,18,20,'LQ = LOCATION QUALIFIER')
+        XCALL W_DISP (G_WNDID,WD_ATTR,ATTR_CLR+ATTR_ALL)     
+TYPE,
+        CTL = '08,033,02,00,AE,1'     
+        CALL INPUT     
+	GOTO (TYPE,end)	,decINXCTL     
+	fob_key.FOBK_TYPE = strENTRY     
+	IF (fob_key.FOBK_TYPE .NE. 'SM' .and. fob_key.FOBK_TYPE .ne. 'LQ') goto type 
+ 	XCALL W_DISP (G_WNDID,WD_POS,08,33,WD_ATTR,ATTR_SET+ATTR_BOLD,fob_key.FOBK_TYPE)
+	using fob_key.fobk_type select
+	    ('SM') ,xcall w_disp (g_wndid,wd_pos,08,36,wd_attr,Attr_set+attr_bold,'SHIPMENT METHOD OF PAYMENT')
+	    ('LQ') ,xcall w_disp (g_wndid,wd_pos,08,36,wd_attr,Attr_set+attr_bold,'LOCATION QUALIFIER')
+        endusing
+	
+	XCALL W_DISP (G_WNDID,WD_ATTR,ATTR_CLR+ATTR_ALL)
+	if (decCNGCTL) goto anycng1 
+code,
+        CTL = '10,033,02,01,AE,1'     
+        CALL INPUT     
+	GOTO (code,end)	,decINXCTL     
+	fob_key.fobk_code = strENTRY     
+	IF (fob_key.fobk_code .eq. '  ') goto code 
+	XCALL W_DISP (G_WNDID,WD_POS,10,33,WD_ATTR,ATTR_SET+ATTR_BOLD,fob_key.fobk_code)     
+	XCALL W_DISP (G_WNDID,WD_ATTR,ATTR_CLR+ATTR_ALL)     
+	if (decCNGCTL) goto anycng1 
+
+ANYCNG1,     
+	decCNGCTL = 4     
+	XCALL ANYCN (decCNGCTL,decWHATNO)     
+  	IF (decCNGCTL .EQ. 0) GOTO readbl     
+	GOTO (type,code) ,decWHATNO     ;scj1
+	GOTO ANYCNG1     
+READBL,
+	fobcod =
+	decadd =
+      	READ (1,FOBCOD,FOB_KEY)	[1=NOkey,40=READBL,53=NOkey]  	 
+	strHLD_fobcod = fobcod 
+        decKEYCNG =     
+	GOTO GOTFOB     
+NOkey, 
+	fobcod      = 
+	decADD = 1     
+	fobcod.fob_type    = fob_key.FOBK_type
+        fobcod.fob_code    = fob_key.fobk_code     
+
+fobdesc,
+	CTL = '12,033,30,01,AE,1'
+	call INPUT
+	GOTO (fobdesc,END)	,decINXCTL 
+	fobcod.fob_desc = strENTRY
+	if (fobcod.fob_desc.eq.'         ') goto fobdesc
+        XCALL W_DISP (G_WNDID,WD_POS,12,33,WD_ATTR,ATTR_SET+ATTR_BOLD,fobcod.fob_desc)
+	XCALL W_DISP (G_WNDID,WD_ATTR,ATTR_CLR+ATTR_ALL)     
+	if (deccngctl) goto anycng 
+comments,
+	CTL = '14,033,40,00,AE,1'
+	call INPUT
+	GOTO (comments,END)	,decINXCTL 
+	fob_comment = strENTRY
+        XCALL W_DISP (G_WNDID,WD_POS,14,33,WD_ATTR,ATTR_SET+ATTR_BOLD,fobcod.fob_comment)
+	XCALL W_DISP (G_WNDID,WD_ATTR,ATTR_CLR+ATTR_ALL)     
+ 	goto ANYCNG		
+GOTFOB,
+        xcall W_DISP (G_WNDID,WD_POS,12,33,WD_ATTR,ATTR_SET+ATTR_BOLD,fobcod.fob_desc)
+	XCALL W_DISP (G_WNDID,WD_POS,14,33,WD_ATTR,ATTR_SET+ATTR_BOLD,fobcod.fob_comment)
+        XCALL W_DISP (G_WNDID,WD_ATTR,ATTR_CLR+ATTR_ALL)     
+	GOTO ANYCNG     
+ANYCNG,     
+	decCNGCTL = 4     
+	XCALL ANYCN (decCNGCTL,decWHATNO)     
+	IF (decCNGCTL .EQ. -1) GOTO DELET     
+	IF (decCNGCTL .EQ. 0) GOTO PROCES     
+	GOTO (fobdesc,comments) ,decWHATNO-2     ;scj1
+	GOTO ANYCNG     
+PROCES,     
+	IF (fobcod .NE. strhld_fobcod) decKEYCNG = 1     
+	IF (decADD) GOTO STORE     
+	IF (decKEYCNG) GOTO KEYCHG     
+	WRITE (1,fobcod)  [40=PROCES,53=KEYCHG]     
+	GOTO START     
+STORE,     
+	STORE (1,FOBCOD)   
+        GOTO START     
+DELET,     
+	XCALL W_DISP (G_WNDID,WD_POS,24,1,'DO YOU WISH TO DELETE THE RECORD ?')     
+	CTL = '24,038,01,00,YN,1'     
+	CALL INPUT     
+	XCALL W_DISP (G_WNDID,WD_POS,24,1,WD_CLR,WDC_EOL)     
+	IF (strENTRY .NE. 'Y') GOTO START     
+REMOVE,     
+	DELETE (1)     
+	GOTO START     
+END,     
+	XCALL W_DISP (G_WNDID,WD_POS,24,1,'DO YOU WISH TO PRINT OUT LIST?')     
+	CTL = '24,038,01,00,YN,1'     
+	CALL INPUT     
+	XCALL W_DISP (G_WNDID,WD_POS,24,1,WD_CLR,WDC_EOL)     
+	IF (strENTRY .NE. 'Y') GOTO DONE     
+	XCALL RDYPR ('FOBCD',0,0)     
+	XCALL BEGFL (1)     
+PRCYC,     
+	READS (1,FOBCOD)	[1=PRDNE,40=PRCYC]     
+	strPLINE (2,3)   = fobcod.fob_type   	      
+	strPLINE (8,9)   = fobcod.fob_code
+	strpline (13,42) = fobcod.fob_desc
+	strpline (45,84) = fobcod.fob_comment
+        
+	CALL PRINT     
+ 	GOTO PRCYC     
+PRDNE,     
+	XCALL RDYPR ('CLOSE')     
+DONE,     
+	XCALL FILES (1,'U',173,12)     
+	STOP 'AP:APMENU'     
+PRINT,     
+	XCALL PRINT (decLINCNT,decPGCNT,strPLINE,TITLE,HDR1,HDR2,' ',     
+&		     'NO LEGEND',' ',' ',0,132,132,0)     
+	RETURN     
+      
+INPUT,     
+	XCALL INPUT (ROW,COL,MAX,MIN,TYP,strENTRY,decINXCTL,V)     
+	RETURN 
+;     
+;	KEY CHANGE MUST DELETE AND THEN STORE     
+;     
+KEYCHG,     
+	DELETE (1)     
+	GOTO STORE     
+
+errtrap,
+	xcall errtrap
+	.END     

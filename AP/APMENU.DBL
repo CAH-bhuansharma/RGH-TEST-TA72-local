@@ -1,0 +1,174 @@
+START	;#004 APMENU.DBL 2/25/80\1 A/P MASTER MENU     
+
+;;----------------------------------------------------------     
+;;             Property of RGH Enterprises, Inc.     
+;;        RGH Enterprises, Inc. software -- AXP version 1.0     
+;;        Revision date:  01-FEB-1996     
+;;        Converted from VAX Dibol to AXP Synergy DBL v5.7.4     
+;;----------------------------------------------------------     
+;DATE:		PROJECT:	WHO:	MARK:		DESCRIPTION:     
+;===========================================================================
+;04/23/2017    roleprovautomation NS5   NS5_roleprovautomation  Role provisioning automation
+;10/23/2014	TASK0654328	lsd	lsd_0654328	add 'ASX' like 'AJC'
+;01/16/2014	wo166584	cth     cth_wo166584	remove 'DPP' access
+;08/26/2013	wo147856	cth	cth_wo147856	remove 'NK1'
+;05/24/2013	wo135936	cth	cth_wo135936	add 'PS1' access like 'AC5'
+;05/16/2013	wo134633	cth	cth_wo134633	add 'NK1' access like 'AC5'
+;08/01/2012	wo96161		cth	cth_wo96161	remove 'CG1' access
+;05/24/2012	wo88709		cth	cth_wo88709	add 'CG1' access like 'AC5'
+;12/28/2011	wo73746		cth	cth_wo73746	add 'ANR' access like 'AC5'
+;10/28/2011	wo67668		rlj	rlj_wo67668	add 'AC5' access like 'AJC'
+;09/20/2011	wo63070		rlj	rlj_wo63070	add 'BK5' access like 'AJC'
+;05/16/2011	wo49802		cth	cth_wo49802	add 'MH0' access like 'AJC'
+;03/24/2011	wo43794		cth	cth_wo43794	remove 'HAH' access
+;03/10/2011	wo42398		cth	cth_wo42398	add 'JC' access like 'HAH'
+;3/04/2011	wo41385		cth	cth_wo41385	add 'BSK' access like 'AJC'
+;02/17/2011	wo39448		cth	cth_wo39448	add 'HAH' access like 'JCD'
+;02/09/2011	wo33474		cth	cth_wo33474	remove 'JM2' access
+;01/11/2011	wo35177		cth	cth_wo35177	add 'AJC' access like 'MW1'
+;12/13/2010	wo31451		cth	cth_wo31451	add 'AC1' access like 'LC1'
+;10/22/2010	wo24502		rlj	rlj_wo24502	add 'LC1' access like 'MLB'
+;05/20/2010	wo4495		rlj	rlj_wo4495	remove 'LNG' access
+;05/06/2010	wo_3186		rlj	rlj_wo3186	add 'MFM' like 'GLR'
+;09/14/2009	wo_268760	rlj	rlj_wo268760 add 'LNG' access like 'JCD'
+;9/24/2008	etd_wo224069		new screen selection
+;8/20/2008 etd_wo219442			allow John Diack access to the ap  screen
+;08/11/2008     wo218110        feb     feb_wo218110    remove KP1 access
+;6/12/2008	etd_wo211533		add barb welfle = blw
+;5/6/2008	etd_prod.05062008	obsoleting many programs
+;03/26/2008	meb_wo202827		add Mike Weisbarth
+;1/15/2008	etd_wo195365		added Jonathan Maag and Mirand Bouklias
+;10/4/2007	etd_prod.10042007 changes from surgical to medical
+;07/05/2007	pur_kendall	etd			addition of new screen entry for the edi820's
+;09/27/2004	pur-204		mew	mew_pur-204	add FOB maintenance
+;09/17/2004	mis-114.1	l.may	lim_mis-114.1	Remove 'Inc.' from the name Edgepark Surgical.
+;7/31/2001			etd	etd2       	changes for logout
+;3/9/2001			etd	etd1		changes for the timeout
+;10/24/2002                     meb     meb1 		removed option 20 and replaced it with 
+;                                                       Reprint Receivings Register from History
+;
+;	PROGRAMMER		DATE		CHANGES     
+;	E. BAAKLINI		03/17/88	ADD VENLBL, REWRITE THE MENU     
+;	e. dickinson		05/18/2000	add changes for new programs     
+;
+;		MASTER MENU FOR PROGRAM SELECTION     
+;     
+.include 	'mfd:common.mfd'     
+.include 'wnd:windows.def'	;include needed defs
+.include 'mfd:gwindow.mfd'	;include needed defs
+.include 'erolprv_key0' repository 'rpsloc',record='RECROLEPROV_KEY0'	;NS5_RoleProvAutomation      
+      
+RECORD
+	flg$roleprov		,d1	;NS5_RoleProvAutomation
+	ENTRY	,A3     
+	INXCTL	,D1     
+	SYSPRG	,D4     
+	ACCESS	,D1     
+	PGM     ,D2
+	
+	PROGNM	,23A31,'AP:VENMNT                      ','AP:VLIST                       ', ;1 2
+&	               '                               ','                               ', ;3 4
+&		       '	                       ','                               ', ;5 6
+&		       '                               ','                               ', ;7 8
+&		       '                               ','edi:edi820_entry               ', ;9 10
+&		       'edi:outbound820                ','edi:create_ach_edi820          ', ;11 12
+&		       '                               ','                               ', ;13 14
+&		       '                               ','                               ', ;15 16
+&		       '                               ','                               ', ;17 18
+&	               '                               ','wms:reprint_recreg_from_purhist', ;19 20
+&		       'ap:fobmt                       ','                               ', ;21 22
+&                      '                               '                                    ;23
+;&		       'AP:APOCTL           ','AP:APYREN           ','AP:VENLBL           ','EDIPGM:EDIT810     '     
+;                       12345678901234567890   12345678901234567890   12345678901234567890  12345678901234567890     
+PROC     
+;OPEN (15,I,'TT:')     
+	xcall startup_windows	;open window for screen displays
+ 	xcall getcm (common)        ;etd1     
+        timout = 20     
+        xcall putcm (common)     
+      
+	XCALL W_DISP (G_WNDID,WD_POS,1,1,WD_CLR,WDC_EOW,'ACCOUNTS PAYABLE MENU')     
+	XCALL W_DISP (G_WNDID,WD_POS,1,57,'EDGEPARK MEDICAL       ')     	   ;lim_mis-114.1
+	XCALL W_DISP (G_WNDID,WD_POS,5,6,'PLEASE SELECT APPLICATION')     
+	XCALL W_DISP (G_WNDID,WD_POS,7,6,' 1. VENDOR MASTER FILE MAINTENANCE')     
+	XCALL W_DISP (G_WNDID,WD_POS,8,6,' 2. PRINT ALPHABETICAL VENDOR LIST')     
+	XCALL W_DISP (G_WNDID,WD_POS,9,6,' 3. * Available*')     
+	XCALL W_DISP (G_WNDID,WD_POS,10,6,' 4. * Available*')     
+	XCALL W_DISP (G_WNDID,WD_POS,11,6,' 5. * Available*')     
+	XCALL W_DISP (G_WNDID,WD_POS,12,6,' 6. * Available*')     
+	XCALL W_DISP (G_WNDID,WD_POS,13,6,' 7. * Available*')     
+	XCALL W_DISP (G_WNDID,WD_POS,14,6,' 8. * Available*')     
+	XCALL W_DISP (G_WNDID,WD_POS,15,6,' 9. * Available*')     
+	XCALL W_DISP (G_WNDID,WD_POS,16,6,'10. INVOICE/ACH ENTRY')     
+	XCALL W_DISP (G_WNDID,WD_POS,17,6,'11. Create EDI820')     
+	XCALL W_DISP (G_WNDID,WD_POS,18,6,'12. CREATE ACH/EDI820 FILE')     
+	XCALL W_DISP (G_WNDID,WD_POS,19,6,'13. * Available*')     
+	XCALL W_DISP (G_WNDID,WD_POS,20,6,'14. * Available*')     
+	XCALL W_DISP (G_WNDID,WD_POS,21,6,'15. * Available*')     
+	XCALL W_DISP (G_WNDID,WD_POS,7,45,'16. * Available*')  
+
+	XCALL W_DISP (G_WNDID,WD_POS,8,45,'17. * Available*')     
+	XCALL W_DISP (G_WNDID,WD_POS,9,45,'18. * Available*')     
+	XCALL W_DISP (G_WNDID,WD_POS,10,45,'19. * Available*')     
+; 5/18/2000     
+;	XCALL W_DISP (G_WNDID,WD_POS,11,45,'20. EDIT EDI INVOICES') 	 ;meb1
+	XCALL W_DISP (G_WNDID,WD_POS,11,45,'20. REPRINT RECEIVINGS REG FROM HIST')  ;meb1
+	XCALL W_DISP (G_WNDID,WD_POS,12,45,'21. FOB CODES MAINTENANCE')  ;mew_pur-204
+;etd_wo224069	XCALL W_DISP (G_WNDID,WD_POS,13,45,'22. INVOICE/ACH ENTRY')  ;etd_pur_kendall
+;etd_wo224069	XCALL W_DISP (G_WNDID,WD_POS,14,45,'23. CREATE ACH/EDI820 FILE')  ;etd_pur_kendall
+	XCALL W_DISP (G_WNDID,WD_POS,13,45,'22. * Available*')  ;etd_pur_kendall
+	XCALL W_DISP (G_WNDID,WD_POS,14,45,'23. * Available*')  ;etd_pur_kendall
+INPUT,     
+	XCALL INPUT(5,32,2,1,'#E',ENTRY,INXCTL,1)     
+      
+	timout = 0     
+        xcall putcm(common)     
+      
+	GOTO (INPUT,ENDOFF), INXCTL     
+	PGM = ENTRY(1,2)     
+	IF (PGM.EQ.96) GOTO ENDNOW     
+;;;	IF (PGM.EQ.13) GOTO NOAVAL 
+;NS5_roleprovautomation+
+	;if ((uinit.ne.'GLR').and.(usrctl.ne.'MIS') .and. (uinit .ne. 'BK5').and.;cth_wo43794 ;cth_wo166584
+	;&   (uinit .ne. 'MLB').and.(uinit .ne. 'MW1') .and.(uinit .ne. 'GLR').and. (uinit .ne. 'LC1').and. ;rlj_wo24502 ;rlj_wo3186
+	;&   (uinit .ne. 'BLW') .and. (uinit .nes. 'JCD')).and.(PGM.EQ.20).and. (uinit .ne. 'AC1').and. (uinit .ne. 'AJC').and.
+	;&   (uinit .ne. 'BSK').and. (uinit.nes. 'JC ').and. (uinit .ne. 'MH0')  .and. (uinit .ne. 'AC5').and.
+	;&   (uinit .ne. 'ANR').and. (uinit .ne. 'PS1').and. (uinit .ne. 'ASX')    ;cth_wo147856  ;lsd_0654328
+	 ; begin										 ;meb1
+	 ;  xcall mesag('Not Authorized',1)						 ;meb1
+	  ; goto input									 ;meb1
+	  ;end										 ;meb1
+	clear RecRoleProv_key0
+	clear flg$roleprov
+	Roleprov_key0_USER_ID = uinit
+	Roleprov_key0_key = 'PGM20_NOTAUTH'
+	xcall check_role_prov(RecRoleProv_key0,flg$roleprov)
+	if(usrctl.ne.'MIS' .and. PGM.EQ.20 .AND. flg$roleprov.ne.1)
+	   begin
+	     xcall mesag('Not Authorized',1)						 ;meb1
+	     goto input
+	   end
+	
+;NS5_roleprovautomation-
+	if (pgm.eq.99) goto logout
+	IF (PGM.LT.1.OR.PGM.GT.23) GOTO INPUT 				;mew_pur-204    
+	SYSPRG(1,2) = 10     
+	SYSPRG(3,4) = PGM     
+	ACCESS =     
+	XCALL SECCK(SYSPRG,ACCESS)     
+	GOTO (INPUT),ACCESS-8     
+	XCALL WAIT(3,1)     
+	STOP PROGNM(PGM)     
+ENDOFF,     
+	STOP 'TSK:MSTMNU'     
+NOAVAL,     
+	XCALL MESAG('!... This selection is not yet available ...!',1)     
+	GOTO INPUT     
+ENDNOW,     
+	XCALL W_DISP (G_WNDID,WD_CLR,WDC_WND)     
+	XCALL FLAGS (07000000)     
+	STOP     
+logout,
+	xcall delete_common
+	stop
+	END     

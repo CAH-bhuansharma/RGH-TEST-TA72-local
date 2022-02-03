@@ -1,0 +1,132 @@
+START	;#012 VLIST.DBL 2/25/80\1 ALPHABETICAL VENDOR LIST     
+;;----------------------------------------------------------     
+;;             Property of RGH Enterprises, Inc.     
+;;        RGH Enterprises, Inc. software -- AXP version 1.0     
+;;        Revision date:  01-FEB-1996     
+;;        Converted from VAX Dibol to AXP Synergy DBL v5.7.4     
+;;----------------------------------------------------------     
+;     
+;     
+;	PROGRAMMER	DATE		CHANGES     
+;	E.BAAKLINI	04/05/88	EXPAND VENMAS     
+;     
+;     
+;     
+;		PRINTS ALPHABETICAL VENDOR LIST     
+;     
+.INCLUDE	'MFD:VENMAS.MFD'     
+.include 'wnd:windows.def'	;include needed windows defs
+.include 'mfd:gwindow.mfd'	;include needed defs
+RECORD     
+	VALPKE	,A25     
+RECORD	TRMMSG     
+		,A6,'ERROR '     
+	ERA	,A3     
+		,A12,' IN ROUTINE '     
+	ERB	,A3     
+RECORD TITLE     
+		,A24,'ALPHABETICAL VENDOR LIST'     
+RECORD HDR2     
+		,A5,' NAME'     
+		,A23     
+		,A4,'NO  '     
+		,A9,'ADDRESS-1'     
+		,A17     
+		,A9,'ADDRESS-2'     
+		,A18     
+		,A4,'CITY'     
+		,A13     
+		,A2,'ST'     
+		,A3     
+		,A3,'ZIP'     
+RECORD     
+	VENCNT	,D4     
+	LINCNT	,D2     
+	PGCNT	,D3     
+	PLINE	,A132     
+	PRTCTL	,D3     
+	STXCTL  ,D1     
+	SWITCH	,D1,1     
+	ERN	,D3     
+	ERL	,D3     
+	STRTNM	,A25     
+	ENDNM	,A25     
+PROC     
+;OPEN (15,I,'TT:')     
+	xcall startup_windows	;open window for screen displays
+	XCALL W_DISP (G_WNDID,WD_POS,1,1,WD_CLR,WDC_EOW,'ALPHABETIC VENDOR PRINT OUT')     
+	XCALL FILES(1,'I',11,SWITCH,2)			;FILE # 11 -- VENMAS FILE     
+	IF (SWITCH .NE. 9) GOTO BEGIN     
+	STOP 'AP:APMENU'     
+BEGIN,     
+	XCALL STENO (STRTNM,ENDNM,'NAME',25,STXCTL,1)     
+	GOTO (END)	,STXCTL     
+	VALPKE = STRTNM     
+	XCALL RDYPR ('*AP:UNPRVL',0,0)     
+	LINCNT = 60     
+	PGCNT = 0     
+	VENCNT = 0     
+RDFRST,     
+	ONERROR GETER1     
+	READ (1,VENMAS,VALPKE)     
+	OFFERROR     
+	GOTO PRINT1     
+NXTREC,     
+	ONERROR GETER2     
+	READS (1,VENMAS,EOF)     
+	OFFERROR     
+PRINT1,     
+	PLINE (1,25) = VNAME     
+	PLINE (28,32) = VENNO     
+	PLINE(34,58) = VADD1     
+	PLINE(60,84) = VADD2     
+	PLINE(86,100) = VCITY     
+	PLINE(103,104) = VSTATE     
+	PLINE(107,111) = VZIP (1,5)     
+	PLINE(113,116) = VZIP (6,9)     
+	CALL PRINT     
+	INCR VENCNT     
+	GOTO NXTREC     
+PRINT,     
+	XCALL PRINT(LINCNT,PGCNT,PLINE,TITLE,' ',HDR2,'NO HDR','NO LEGEND',' ',' ',1,132,PRTCTL,0)     
+	IF (PGCNT.LT.0) GOTO END		;ABORT     
+	RETURN     
+EOF,     
+	PLINE(1,5) = VENCNT, 'Z,ZZX'     
+	PLINE(7,21) = 'VENDORS ON FILE'     
+	FORMS (14,2)     
+	LINCNT = LINCNT - 1     
+	CALL PRINT     
+END,     
+	FORMS (14,0)     
+	XCALL MESAG (' ',1)     
+	XCALL RDYPR ('CLOSE')     
+	XCALL FILES(1,'I',11,2)     
+END2,     
+	STOP 'AP:APMENU'     
+NOTFND,     
+	IF (VALPKE .LT. ENDNM) GOTO PRINT1     
+	XCALL MESAG ('INVALID VENDOR RANGE',2)     
+	XCALL RDYPR ('CLOSE')     
+	GOTO BEGIN     
+GETER1,     
+	OFFERROR     
+	ERB = '1'     
+	XCALL ERROR (ERN,ERL)     
+	IF (ERN .EQ. 1) GOTO EOF	;KEY NOT FOUND     
+	IF (ERN .EQ. 40) GOTO NXTREC   	;RECORD LOCKED     
+	IF (ERN .EQ. 53) GOTO NOTFND    ;KEY MIS-MATCH     
+	GOTO TRMERR     
+GETER2,     
+	OFFERROR     
+	ERB = '2'     
+	XCALL ERROR (ERN,ERL)     
+	IF (ERN .EQ. 1) GOTO EOF 	;END OF FILE (SEQUENTIAL READ)     
+	IF (ERN .EQ. 40) GOTO PRINT1    ;RECORD LOCKED     
+TRMERR,     
+	ERA = ERN	,'XXX'     
+	XCALL W_DISP (G_WNDID,WD_POS,12,20,WD_ATTR,ATTR_SET+ATTR_BOLD+ATTR_BLNK,WD_CLR,WDC_EOL,TRMMSG)     
+        XCALL W_DISP (G_WNDID,WD_ATTR,ATTR_CLR+ATTR_ALL)   
+	xcall MESAG ('AN ERROR HAS OCCURED, WRITE DOWN AND CONTACT MIS',1)
+	STOP 'TSK:MSTMNU'    
+	END     
